@@ -30,10 +30,13 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
+  path_provider: ^2.1.5  # Exactly 2 spaces from the left
+  file_picker: ^10.3.8    # Exactly 2 spaces from the left
+  cupertino_icons: ^1.0.8 # Exactly 2 spaces from the left
 
   # The following adds the Cupertino Icons font to your application.
   # Use with the CupertinoIcons class for iOS style icons.
-  cupertino_icons: ^1.0.8
+  
 
 dev_dependencies:
   flutter_test:

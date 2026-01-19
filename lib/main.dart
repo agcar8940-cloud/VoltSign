@@ -1,15 +1,9 @@
 import 'package:flutter/cupertino.dart';
-import 'dart:ffi';
 import 'dart:io';
+import 'package:file_picker/file_picker.dart';
+import 'package:path_provider/path_provider.dart';
 
-// 1. Define the C function signature (How it looks in C)
-typedef GetUidC = Int32 Function();
-// 2. Define the Dart function signature (How we use it in Flutter)
-typedef GetUidDart = int Function();
-
-void main() {
-  runApp(const VoltSignApp());
-}
+void main() => runApp(const VoltSignApp());
 
 class VoltSignApp extends StatelessWidget {
   const VoltSignApp({super.key});
@@ -17,81 +11,258 @@ class VoltSignApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return const CupertinoApp(
-      title: 'VoltSign',
-      theme: CupertinoThemeData(
-        brightness: Brightness.light,
-        primaryColor: CupertinoColors.activeBlue,
-      ),
-      home: VoltSignHomePage(),
+      theme: CupertinoThemeData(brightness: Brightness.dark),
+      home: VoltMainScreen(),
     );
   }
 }
 
-class VoltSignHomePage extends StatefulWidget {
-  const VoltSignHomePage({super.key});
+class VoltMainScreen extends StatefulWidget {
+  const VoltMainScreen({super.key});
 
   @override
-  State<VoltSignHomePage> createState() => _VoltSignHomePageState();
+  State<VoltMainScreen> createState() => _VoltMainScreenState();
 }
 
-class _VoltSignHomePageState extends State<VoltSignHomePage> {
-  int _currentUid = 501;
-  int _effectiveUid = 501;
+class _VoltMainScreenState extends State<VoltMainScreen> {
+  @override
+  Widget build(BuildContext context) {
+    return CupertinoTabScaffold(
+      tabBar: CupertinoTabBar(
+        height: 65.0,
+        iconSize: 23.0,
+        items: const <BottomNavigationBarItem>[
+          BottomNavigationBarItem(
+            icon: Icon(CupertinoIcons.square_stack_3d_up),
+            label: 'Apps',
+          ),
+          BottomNavigationBarItem(
+            icon: Icon(CupertinoIcons.folder),
+            label: 'Files',
+          ),
+          BottomNavigationBarItem(
+            icon: Icon(CupertinoIcons.settings),
+            label: 'Settings',
+          ),
+        ],
+      ),
+      tabBuilder: (context, index) {
+        return CupertinoTabView(
+          builder: (context) {
+            if (index == 0) return const AppsPage();
+            if (index == 1) return const FilesPage();
+            return const SettingsPage();
+          },
+        );
+      },
+    );
+  }
+}
 
-  // 3. Connect to the Native Library
-  // We use DynamicLibrary.process() because on iOS,
-  // custom C files are linked directly into the main app binary.
-  final DynamicLibrary _nativeLib = Platform.isIOS
-      ? DynamicLibrary.process()
-      : DynamicLibrary.open('voltroot.so');
+// --- APPS & SETTINGS (Placeholders) ---
+class AppsPage extends StatelessWidget {
+  const AppsPage({super.key});
+  @override
+  Widget build(BuildContext context) => const CupertinoPageScaffold(
+    navigationBar: CupertinoNavigationBar(middle: Text('My Apps')),
+    child: Center(child: Text('No apps signed yet.')),
+  );
+}
 
-  void _checkRoot() {
-    // 4. Look up your C functions by the names you wrote in voltroot.c
-    final GetUidDart getUid = _nativeLib
-        .lookup<NativeFunction<GetUidC>>('get_current_uid')
-        .asFunction();
-    final GetUidDart getEuid = _nativeLib
-        .lookup<NativeFunction<GetUidC>>('get_effective_uid')
-        .asFunction();
+class SettingsPage extends StatelessWidget {
+  const SettingsPage({super.key});
+  @override
+  Widget build(BuildContext context) => const CupertinoPageScaffold(
+    navigationBar: CupertinoNavigationBar(middle: Text('Settings')),
+    child: Center(child: Text('Settings content here.')),
+  );
+}
 
+// --- FILES PAGE (Corrected Logic) ---
+class FilesPage extends StatefulWidget {
+  const FilesPage({super.key});
+  @override
+  State<FilesPage> createState() => _FilesPageState();
+}
+
+class _FilesPageState extends State<FilesPage> {
+  List<FileSystemEntity> files = [];
+  bool isSelectionMode = false;
+  Set<String> selectedPaths = {};
+
+  @override
+  void initState() {
+    super.initState();
+    _refreshFiles();
+  }
+
+  // FIXED: The method now works correctly with path_provider
+  Future<void> _refreshFiles() async {
+    final dir = await getApplicationDocumentsDirectory();
+    if (await dir.exists()) {
+      setState(() {
+        files = dir.listSync();
+      });
+    }
+  }
+
+  void _showActionSheet(BuildContext context) {
+    showCupertinoModalPopup(
+      context: context,
+      builder: (context) => CupertinoActionSheet(
+        title: const Text('File Operations'),
+        actions: [
+          CupertinoActionSheetAction(
+            onPressed: () {
+              Navigator.pop(context);
+              _createNewFolder();
+            },
+            child: const Text('New Folder'),
+          ),
+          CupertinoActionSheetAction(
+            onPressed: () {
+              Navigator.pop(context);
+              _importFile();
+            },
+            child: const Text('Import File'),
+          ),
+          CupertinoActionSheetAction(
+            isDestructiveAction: !isSelectionMode,
+            onPressed: () {
+              Navigator.pop(context);
+              setState(() {
+                isSelectionMode = !isSelectionMode;
+                selectedPaths.clear();
+              });
+            },
+            child: Text(isSelectionMode ? 'Exit Selection' : 'Select Files'),
+          ),
+        ],
+        cancelButton: CupertinoActionSheetAction(
+          onPressed: () => Navigator.pop(context),
+          child: const Text('Cancel'),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _createNewFolder() async {
+    final dir = await getApplicationDocumentsDirectory();
+    final newDir = Directory(
+      '${dir.path}/Folder_${DateTime.now().millisecondsSinceEpoch}',
+    );
+    await newDir.create();
+    _refreshFiles();
+  }
+
+  Future<void> _importFile() async {
+    // FIXED: Correct usage of FilePickerResult
+    FilePickerResult? result = await FilePicker.platform.pickFiles();
+    if (result != null && result.files.single.path != null) {
+      final dir = await getApplicationDocumentsDirectory();
+      final file = File(result.files.single.path!);
+      await file.copy('${dir.path}/${result.files.single.name}');
+      _refreshFiles();
+    }
+  }
+
+  void _deleteSelected() async {
+    for (var path in selectedPaths) {
+      final type = FileSystemEntity.typeSync(path);
+      if (type == FileSystemEntityType.directory) {
+        await Directory(path).delete(recursive: true);
+      } else if (type == FileSystemEntityType.file) {
+        await File(path).delete();
+      }
+    }
     setState(() {
-      // 5. Call the C function and update the UI
-      _currentUid = getUid();
-      _effectiveUid = getEuid();
+      selectedPaths.clear();
+      isSelectionMode = false;
     });
+    _refreshFiles();
   }
 
   @override
   Widget build(BuildContext context) {
     return CupertinoPageScaffold(
-      navigationBar: const CupertinoNavigationBar(
-        middle: Text('VoltSign Exploit Tool'),
+      navigationBar: CupertinoNavigationBar(
+        middle: const Text('Files'),
+        trailing: CupertinoButton(
+          padding: EdgeInsets.zero,
+          child: Icon(
+            isSelectionMode
+                ? CupertinoIcons.trash
+                : CupertinoIcons.ellipsis_vertical,
+          ),
+          onPressed: () =>
+              isSelectionMode ? _deleteSelected() : _showActionSheet(context),
+        ),
       ),
       child: SafeArea(
-        child: Center(
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              const Text('Current Status:', style: TextStyle(fontSize: 18)),
-              const SizedBox(height: 10),
-              Text(
-                _currentUid == 0 ? 'ROOTED' : 'Sandboxed (UID: $_currentUid)',
-                style: TextStyle(
-                  fontSize: 24,
-                  fontWeight: FontWeight.bold,
-                  color: _currentUid == 0
-                      ? CupertinoColors.activeGreen
-                      : CupertinoColors.destructiveRed,
-                ),
+        child: files.isEmpty
+            ? const Center(child: Text("No files. Use 3-dots to import."))
+            : ListView.builder(
+                itemCount: files.length,
+                itemBuilder: (context, index) {
+                  final item = files[index];
+                  final name = item.path.split('/').last;
+                  final isSelected = selectedPaths.contains(item.path);
+
+                  return GestureDetector(
+                    onTap: () {
+                      if (isSelectionMode) {
+                        setState(() {
+                          if (isSelected)
+                            selectedPaths.remove(item.path);
+                          else
+                            selectedPaths.add(item.path);
+                        });
+                      }
+                    },
+                    child: Container(
+                      decoration: const BoxDecoration(
+                        border: Border(
+                          bottom: BorderSide(
+                            color: CupertinoColors.separator,
+                            width: 0.5,
+                          ),
+                        ),
+                      ),
+                      padding: const EdgeInsets.symmetric(
+                        vertical: 12,
+                        horizontal: 16,
+                      ),
+                      child: Row(
+                        children: [
+                          Icon(
+                            item is Directory
+                                ? CupertinoIcons.folder_fill
+                                : CupertinoIcons.doc,
+                            color: item is Directory
+                                ? CupertinoColors.activeBlue
+                                : CupertinoColors.systemGrey,
+                          ),
+                          const SizedBox(width: 15),
+                          Expanded(
+                            child: Text(
+                              name,
+                              style: const TextStyle(fontSize: 17),
+                            ),
+                          ),
+                          if (isSelectionMode)
+                            // FIXED: Using 'checkmark_circle' which is the standard icon name
+                            Icon(
+                              isSelected
+                                  ? CupertinoIcons.checkmark_circle
+                                  : CupertinoIcons.circle,
+                              color: CupertinoColors.activeBlue,
+                            ),
+                        ],
+                      ),
+                    ),
+                  );
+                },
               ),
-              const SizedBox(height: 40),
-              CupertinoButton.filled(
-                onPressed: _checkRoot,
-                child: const Text('Check Current UID'),
-              ),
-            ],
-          ),
-        ),
       ),
     );
   }
