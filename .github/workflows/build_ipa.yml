@@ -1,0 +1,31 @@
+name: Build VoltSign IPA
+on: [push] # Triggers every time you 'git push'
+
+jobs:
+  build:
+    runs-on: macos-latest # This is your free cloud Mac
+    steps:
+      - uses: actions/checkout@v3
+      
+      - name: Install Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: 'stable'
+
+      - name: Build IPA (Unsigned)
+        run: |
+          flutter pub get
+          # We build 'no-codesign' because you will sign it yourself with ESign
+          flutter build ios --release --no-codesign 
+
+      - name: Package IPA
+        run: |
+          mkdir -p Payload
+          mv build/ios/iphoneos/Runner.app Payload/
+          zip -r VoltSign.ipa Payload
+          
+      - name: Upload Artifact
+        uses: actions/upload-artifact@v3
+        with:
+          name: VoltSign-IPA
+          path: VoltSign.ipa
